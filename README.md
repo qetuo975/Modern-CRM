@@ -20,6 +20,8 @@
 
 	- [Genel Bakış](#genel-bakış)
 	- [Mimari](#mimari)
+	- [Core Concepts](#core-concepts)
+	- [Prod-Ready Notlar](#prod-ready-notlar)
 	- [Özellikler (Modül Bazlı)](#özellikler-modül-bazlı)
 	- [Frontend Route Yapısı](#frontend-route-yapısı)
 	- [Backend API Route Yapısı](#backend-api-route-yapısı)
@@ -50,13 +52,15 @@ Bu repo; hem **Angular (SSR) web uygulamasını** hem de aynı process içerisin
 
 ```mermaid
 flowchart TB
-	U[👤 Kullanıcı / Tarayıcı] -->|HTTPS| A[Angular SSR + SPA]
-	A -->|/api/*| API[Express API]
-	API -->|Sequelize| DB[(MySQL)]
-	A <--> |Socket.IO| WS[(Realtime Gateway)]
-	EXT[Meta / Instagram / WhatsApp Webhooks] -->|/api/*/webhook| API
-	API --> FS[(public/uploads)]
+  User[User / Browser] -->|HTTPS| Web[Angular SSR + SPA]
+  Web -->|/api/*| Api[Express API]
+  Api -->|Sequelize| Db[(MySQL)]
+  Web <--> |Socket.IO| Realtime[Socket.IO Gateway]
+  Providers[Meta / Instagram / WhatsApp] -->|/api/*/webhook| Api
+  Api --> Uploads[(public/uploads)]
 ```
+
+> GitHub Mermaid render notu: Diyagramda emoji/tabs yerine sade ASCII kullanılır.
 
 **Ana bileşenler**
 - **Angular 19 SSR**: Server-side rendering + hydration
@@ -64,6 +68,74 @@ flowchart TB
 - **Sequelize**: MySQL ORM
 - **Socket.IO**: Kanban, müşteri güncellemeleri ve chat için realtime yayın
 - **Runtime Config**: Prod secrets yönetimi (DB + şifreleme + env fallback)
+
+---
+
+## Core Concepts
+
+### 1) Resolver-first veri yükleme (Angular)
+Bu proje SSR uyumu ve tutarlı “ilk ekran” davranışı için **ilk yükleme verilerini route resolver’ları üzerinden** almayı hedefler.
+
+- Kaynak: `src/app/resolvers/*` + `src/app/app.routes.ts`
+- Prensip: Sayfa ilk açılırken gereken “initial state” resolver’dan gelir; kullanıcı etkileşimiyle oluşan filtre/sayfalama/yenileme akışları component içinde devam edebilir.
+- Kazanımlar: SSR’da daha stabil initial render, komponent lifecycle içinde “ilk fetch yarışları”nın azalması, daha merkezi hata yakalama.
+
+### 2) Table altyapısı (server-side filtering/sorting/pagination)
+CRM’de liste ekranlarının çoğu ortak bir tablo bileşenini kullanır.
+
+- UI: `src/app/components/table/table.component.ts`
+- State/engine: `src/app/services/table.service.ts`
+
+Öne çıkan davranışlar:
+- `TableConfig.serverSideFiltering=true` ise frontend filter uygulanmaz; filtre event’i “backend’e parametre olarak” gönderilir.
+- `TableConfig.serverSideSorting=true` ise frontend sort yapılmaz; `sortBy/sortDir` gibi parametrelerle backend sıralar.
+- `multiselect` filtre tipi: UI çoklu seçim yapar, seçili değerleri filtre olarak taşır.
+
+Bu yaklaşım; büyük dataset’lerde performans ve tutarlı pagination için kritik.
+
+### 3) Multi-select & filtre parametreleri
+Özellikle **Customers** gibi sayfalarda filtreler UI’da çoklu seçim (multiselect) olarak tasarlanır.
+
+- Pattern: tabloda kolona ait `filterOptions` set edilir; Table bileşeni “seçili değerleri” bir filtre state’i olarak yönetir.
+- Backend’e taşıma: sayfa component’i filtre state’ini `filter_*` query parametrelerine map ederek API çağrısı yapar.
+
+### 4) Activity + ActivityEvent (Timeline) modeli
+Aktivite sistemi; müşteri operasyonlarını “tekil bir aktivite” ve onun “event timeline’ı” üzerinden izlenebilir kılar.
+
+- Model: `src/models/activity.model.ts`
+	- `name` (örn. `RANDEVU`, `KAPORA`, `WHATSAPP_LEAD`, `INSTAGRAM_LEAD`, ...)
+	- `status`: `Pending` / `Completed`
+	- `result`: kontrollü set (backend validasyonu mevcut)
+- Timeline Model: `src/models/activity-event.model.ts`
+	- `type`: `CALL`, `COMMENT`, `MOVE`, `STATUS_CHANGE`, `DEPOSIT_TAKEN`, `META_WEBHOOK_LEAD`, ...
+	- `metadata`: JSON (kanban kolonları, entegrasyon payload referansları vb. için)
+
+API davranışı (özet):
+- `POST /api/activities`: müşteri için aktivite oluşturur, gerekiyorsa kanban kartı oluşturma/taşıma akışını tetikler.
+- `GET /api/activities/:customerId`: müşteri aktivitelerini ve son event’leri getirir.
+- `POST /api/activities/:id/events`: timeline’a event ekler; CALL/VIDEO_CALL gibi event’lerde `lastContact` güncellemesi yapılabilir.
+
+---
+
+## Prod-Ready Notlar
+
+### Konfigürasyon/Secrets standardı
+- DB: `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASS`
+- JWT: `JWT_SECRET`, `JWT_REFRESH_SECRET`
+- Entegrasyon token’ları: tercihen **System Config (AppConfig)**, acil durumda ENV fallback.
+
+### SSR, Cookie ve HTTPS
+Cookie auth + bazı senaryolarda `SameSite=None` + `Secure` gereksinimi nedeniyle prod ortamda **HTTPS zorunlu** kabul edilmelidir.
+
+### Log/Observability
+Express tarafında request log ve hata logları mevcut; prod’da kurumsal standartlara göre:
+- PII maskleme,
+- log retention,
+- merkezi log (ELK/Datadog vb.) entegrasyonu
+önerilir.
+
+### Reverse proxy
+Prod’da reverse proxy arkasında çalışacak şekilde `trust proxy` yaklaşımı düşünülmüştür; CORS/policy ayarları prod’da daraltılmalıdır.
 
 ---
 
@@ -121,23 +193,23 @@ Kaynak: `src/app/app.routes.ts`
 | Route | Guard | Resolver | Amaç |
 |---|---|---|---|
 | `/dashboard` | `AuthGuard` + `dashboardGuard` | `dashboardResolver` | Ana panel |
-| `/campaign-analytics` | `AuthGuard` + `campaignsGuard` | - | Kampanya analitiği |
+| `/campaign-analytics` | `AuthGuard` + `campaignsGuard` | `CampaignAnalyticsResolverService` | Kampanya analitiği |
 | `/stok` | `AuthGuard` + `inventoryGuard` | `PlotResolverService` | Stok/plot |
-| `/sales-analysis` | `AuthGuard` + `analysisGuard` | - | Satış analizi |
+| `/sales-analysis` | `AuthGuard` + `analysisGuard` | `PlotSalesAnalysisResolverService` | Satış analizi |
 | `/kanban` | `AuthGuard` + `kanbanGuard` | `KanbanResolverService` | Kanban |
-| `/reports` | `AuthGuard` + `reportsGuard` | - | Raporlar |
+| `/reports` | `AuthGuard` + `reportsGuard` | `AnalysisResolverService` | Raporlar |
 | `/customers` | `AuthGuard` + `customersGuard` | `CustomerResolverService` | Müşteriler |
-| `/customers/:id` | `AuthGuard` + `customersGuard` | - | Müşteri detayı |
+| `/customers/:id` | `AuthGuard` + `customersGuard` | `CustomerDetailResolverService` | Müşteri detayı |
 | `/opportunities` | `AuthGuard` + `appointmentsGuard` | `AppointmentResolverService` | Fırsatlar/Randevular |
-| `/notes` | `AuthGuard` + `notesGuard` | - | Notlar |
-| `/project-management` | `AuthGuard` + `projectsGuard` | - | Proje yönetimi |
-| `/user-management` | `AuthGuard` + `userManagementGuard` | - | Kullanıcı/rol yönetimi |
-| `/chat` | `AuthGuard` + `chatGuard` | - | Mesajlaşma |
-| `/work-orders` | `AuthGuard` + `workOrdersGuard` | - | İş emirleri |
-| `/system-config` | `AuthGuard` + `settingsGuard` | - | Sistem ayarları |
-| `/arviva-drive` | `AuthGuard` + `filesGuard` | - | Drive |
+| `/notes` | `AuthGuard` + `notesGuard` | `NotesResolverService` | Notlar |
+| `/project-management` | `AuthGuard` + `projectsGuard` | `ProjectManagementResolverService` | Proje yönetimi |
+| `/user-management` | `AuthGuard` + `userManagementGuard` | `UserManagementResolverService` | Kullanıcı/rol yönetimi |
+| `/chat` | `AuthGuard` + `chatGuard` | `ChatResolverService` | Mesajlaşma |
+| `/work-orders` | `AuthGuard` + `workOrdersGuard` | `WorkOrdersResolverService` | İş emirleri |
+| `/system-config` | `AuthGuard` + `settingsGuard` | `SystemConfigResolverService` | Sistem ayarları |
+| `/arviva-drive` | `AuthGuard` + `filesGuard` | `GoogleDriveResolverService` | Drive |
 | `/giris-yap` | `GuestGuard` | - | Login |
-| `/profile` | `AuthGuard` | - | Profil |
+| `/profile` | `AuthGuard` | `ProfileResolverService` | Profil |
 | `/video-call/:roomId` | - | - | Video görüşme odası |
 | `/auth/callback` | - | - | OAuth callback |
 | `/error/404`, `/error/500` | - | - | Hata sayfaları |
