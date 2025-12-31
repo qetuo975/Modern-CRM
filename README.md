@@ -93,23 +93,24 @@ sequenceDiagram
 	participant Ui as Angular UI
 	participant Cv as CustomerViewer
 
-	Src->>Api: Lead arrives (website/webhook)
-	Note over Src,Api: Examples: POST /api/general/projectweb\nWebhook: /api/meta/webhook, /api/instagram/webhook, /api/whatsapp/webhook
+	Src->>Api: Lead arrives
+	Note over Src,Api: Example: POST /api/general/projectweb
+	Note over Src,Api: Webhooks: /api/meta/webhook | /api/instagram/webhook | /api/whatsapp/webhook
 
-	Api->>Db: Upsert Customer (+ optional UTM/message)
+	Api->>Db: Upsert Customer (and context)
 	Api->>Db: Ensure KanbanCard exists
-	Api->>Kb: Set columnId = 1 ("Potansiyel")
-	Api->>Db: Create/ensure pending Activity\n(POTANSIYEL_MUSTERI_GIRISI / WHATSAPP_LEAD / INSTAGRAM_LEAD / MESSENGER_LEAD)
+	Api->>Kb: Move to columnId=1 (Potansiyel)
+	Api->>Db: Create/ensure pending Activity (Lead entry)
 	Api-->>Rt: Broadcast customer/kanban updates
 
-	Ui->>Kb: Sales/team works pipeline (move card)
-	Ui->>Cv: Open viewer (toolbar/chat/kanban)
+	Ui->>Kb: Work pipeline (move card)
+	Ui->>Cv: Open viewer
 	Cv->>Api: GET /api/customerviewer/:customerId/details
-	Api->>Db: Aggregate: customer + responsibles\nactivities + events + reminders\ncontracts + plots/deposits\nwhatsapp/instagram/messenger messages\nlatest UTM + logsCount
+	Note right of Api: Aggregates snapshot:<br/>responsibles + quality + reference<br/>activities + events (timeline)<br/>reminders + contracts + plots/deposits<br/>messages (WA/IG/Messenger) + latest UTM
 	Api-->>Cv: Aggregated customer payload
 
-	Cv->>Api: Write operations (comment/reminder/update)\n+ activity events (CALL/MOVE/STATUS_CHANGE)
-	Api->>Db: Persist changes; update lastContact when needed
+	Cv->>Api: Write ops (update/comment/reminder/event)
+	Api->>Db: Persist changes (may update lastContact)
 	Api-->>Rt: Broadcast updates for UI sync
 ```
 
