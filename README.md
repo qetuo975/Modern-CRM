@@ -20,6 +20,7 @@
 
 	- [Genel Bakış](#genel-bakış)
 	- [Mimari](#mimari)
+	- [Müşteri Yaşam Döngüsü (Lead → Kanban → CustomerViewer)](#müşteri-yaşam-döngüsü-lead--kanban--customerviewer)
 	- [Core Concepts](#core-concepts)
 	- [Prod-Ready Notlar](#prod-ready-notlar)
 	- [Özellikler (Modül Bazlı)](#özellikler-modül-bazlı)
@@ -71,6 +72,67 @@ flowchart TB
 
 ---
 
+## Müşteri Yaşam Döngüsü (Lead → Kanban → CustomerViewer)
+
+Bu projede “müşteri” sadece `customers` tablosundaki bir kayıt değildir. Müşteri; **Kanban kartı (pipeline konumu)**, **aktivite/timeline (operasyon geçmişi)**, **multi-channel mesajlaşma geçmişi** ve **UTM/kampanya bağlamı** ile birlikte ele alınır.
+
+Bu yüzden mimaride iki kritik karar var:
+- **Lead ingestion** akışları (Website / Meta / Instagram / WhatsApp) müşteriyi oluşturur/günceller ve **Kanban’da Potansiyel** kolona düşürür.
+- Operasyon sırasında “tek ekran” yaklaşımı için **CustomerViewer** (modal) kullanılır: müşteriyle ilgili tüm veri ve aksiyonlar tek bir agregasyon API’sinden yüklenir.
+
+### Müşteri süreci timeline (high-level)
+
+```mermaid
+sequenceDiagram
+	autonumber
+	participant Src as Lead Source
+	participant Api as Express API
+	participant Db as MySQL (Sequelize)
+	participant Kb as Kanban (Card/Column)
+	participant Rt as Socket.IO
+	participant Ui as Angular UI
+	participant Cv as CustomerViewer
+
+	Src->>Api: Lead arrives (website/webhook)
+	Note over Src,Api: Examples: POST /api/general/projectweb\nWebhook: /api/meta/webhook, /api/instagram/webhook, /api/whatsapp/webhook
+
+	Api->>Db: Upsert Customer (+ optional UTM/message)
+	Api->>Db: Ensure KanbanCard exists
+	Api->>Kb: Set columnId = 1 ("Potansiyel")
+	Api->>Db: Create/ensure pending Activity\n(POTANSIYEL_MUSTERI_GIRISI / WHATSAPP_LEAD / INSTAGRAM_LEAD / MESSENGER_LEAD)
+	Api-->>Rt: Broadcast customer/kanban updates
+
+	Ui->>Kb: Sales/team works pipeline (move card)
+	Ui->>Cv: Open viewer (toolbar/chat/kanban)
+	Cv->>Api: GET /api/customerviewer/:customerId/details
+	Api->>Db: Aggregate: customer + responsibles\nactivities + events + reminders\ncontracts + plots/deposits\nwhatsapp/instagram/messenger messages\nlatest UTM + logsCount
+	Api-->>Cv: Aggregated customer payload
+
+	Cv->>Api: Write operations (comment/reminder/update)\n+ activity events (CALL/MOVE/STATUS_CHANGE)
+	Api->>Db: Persist changes; update lastContact when needed
+	Api-->>Rt: Broadcast updates for UI sync
+```
+
+### Kodda birebir karşılığı (kritik örnekler)
+
+- **Website lead → Potansiyel + Aktivite**
+	- Kaynak: `src/routes/general.router.ts`
+	- `POST /api/general/projectweb` akışı:
+		- Telefon ile müşteri kontrolü → yoksa müşteri oluşturur (`source: Website`)
+		- Kanban kartı yoksa oluşturur; varsa **Potansiyel (columnId: 1)** kolona taşır
+		- Yeni müşteri için `ActivityName.POTANSIYEL_MUSTERI_GIRISI` oluşturur
+		- Mevcut müşteri için “Pending aktivite var mı?” kontrol eder; yoksa `ActivityName.YENIDEN_BASVURU` oluşturabilir
+
+- **CustomerViewer = agregasyon + operasyon API**
+	- Kaynak: `src/routes/customerviewer.router.ts`
+	- `GET /api/customerviewer/:customerId/details`:
+		- Yetki: admin değilse, kullanıcı müşteri “responsible” listesinde olmalı
+		- Agregasyon: responsibles, quality skorları, reference, applied projects, activities+events (timeline), reviews, contracts, plots+deposit, mesaj geçmişi (WhatsApp/IG/Messenger), latest UTM, reminders ve log sayısı
+
+> Not: CustomerViewer, route bazlı “/customers/:id” sayfasını tamamlayan bir operasyon ekranıdır. Projede birçok noktadan (Toolbar hızlı arama, Chat kartı, Kanban kartı) viewer açılarak işlem akışı hızlandırılır.
+
+---
+
 ## Core Concepts
 
 ### 1) Resolver-first veri yükleme (Angular)
@@ -114,6 +176,13 @@ API davranışı (özet):
 - `POST /api/activities`: müşteri için aktivite oluşturur, gerekiyorsa kanban kartı oluşturma/taşıma akışını tetikler.
 - `GET /api/activities/:customerId`: müşteri aktivitelerini ve son event’leri getirir.
 - `POST /api/activities/:id/events`: timeline’a event ekler; CALL/VIDEO_CALL gibi event’lerde `lastContact` güncellemesi yapılabilir.
+
+### 5) CustomerViewer (tek ekran operasyon yaklaşımı)
+Müşteri üzerinde yapılan işlemlerin önemli bir kısmı “liste ekranı → müşteri detay route’u” yerine **CustomerViewer modal** üzerinden yürür.
+
+- Backend agregasyon kaynağı: `GET /api/customerviewer/:customerId/details`
+- Bu endpoint tek çağrıda şunları getirir: müşteri temel alanları, sorumlular, UTM bağlamı, aktiviteler+event timeline, not/hatırlatıcılar, sözleşmeler/randevu bilgileri, plot/deposit akışı ve mesaj geçmişleri.
+- Sonuç: UI tarafında birden fazla endpoint’le “ilk ekranı toplama” yerine, **tek bir snapshot** ile ekran açılır; devamındaki aksiyonlar (comment/reminder/update/event) incremental olarak ilerler.
 
 ---
 
