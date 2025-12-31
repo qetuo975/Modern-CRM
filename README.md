@@ -1,19 +1,19 @@
-# ArvivaCRM 🚀
+# Modern CRM 🚀
 
-<p align="center">
-	<b>Full‑stack CRM (Angular SSR + Express + MySQL/Sequelize + Socket.IO)</b><br/>
-	<i>Kurumsal ölçekte satış/lead yönetimi, Kanban, iş emirleri, sosyal mesajlaşma ve Meta/WhatsApp/Instagram entegrasyonları</i>
-</p>
+<div align="center">
+  <b>Full‑stack CRM (Angular SSR + Express + MySQL/Sequelize + Socket.IO)</b><br/>
+  <i>Kurumsal ölçekte satış/lead yönetimi, Kanban, iş emirleri, sosyal mesajlaşma ve Meta/WhatsApp/Instagram entegrasyonları</i>
+</div>
 
-<p align="center">
-	<img alt="Angular" src="https://img.shields.io/badge/Angular-19-red?logo=angular" />
-	<img alt="Node" src="https://img.shields.io/badge/Node.js-18+-3c873a?logo=node.js&logoColor=white" />
-	<img alt="Express" src="https://img.shields.io/badge/Express-4-black?logo=express" />
-	<img alt="MySQL" src="https://img.shields.io/badge/MySQL-8-blue?logo=mysql&logoColor=white" />
-	<img alt="Sequelize" src="https://img.shields.io/badge/Sequelize-6-52B0E7?logo=sequelize" />
-	<img alt="Socket.IO" src="https://img.shields.io/badge/Socket.IO-4-black?logo=socket.io" />
-	<img alt="SSR" src="https://img.shields.io/badge/SSR-Angular%20SSR-7b1fa2" />
-</p>
+<div align="center">
+  <img alt="Angular" src="https://img.shields.io/badge/Angular-19-red?logo=angular" />
+  <img alt="Node" src="https://img.shields.io/badge/Node.js-18+-3c873a?logo=node.js&logoColor=white" />
+  <img alt="Express" src="https://img.shields.io/badge/Express-4-black?logo=express" />
+  <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8-blue?logo=mysql&logoColor=white" />
+  <img alt="Sequelize" src="https://img.shields.io/badge/Sequelize-6-52B0E7?logo=sequelize" />
+  <img alt="Socket.IO" src="https://img.shields.io/badge/Socket.IO-4-black?logo=socket.io" />
+  <img alt="SSR" src="https://img.shields.io/badge/SSR-Angular%20SSR-7b1fa2" />
+</div>
 
 <details>
 	<summary><b>✨ Hızlı İçindekiler</b></summary>
@@ -43,7 +43,7 @@
 
 ## Genel Bakış
 
-ArvivaCRM; **lead ve müşteri yönetimi**, **Kanban süreçleri**, **iş emri (work order) operasyonları**, **notlar ve hatırlatıcılar**, **kampanya analitiği**, **Google Drive tabanlı dosyalama** ve **çok kanallı mesajlaşma** (WhatsApp/Instagram/Messenger) gibi modülleri tek bir platformda birleştirir.
+Modern CRM; **lead ve müşteri yönetimi**, **Kanban süreçleri**, **iş emri (work order) operasyonları**, **notlar ve hatırlatıcılar**, **kampanya analitiği**, **Google Drive tabanlı dosyalama** ve **çok kanallı mesajlaşma** (WhatsApp/Instagram/Messenger) gibi modülleri tek bir platformda birleştirir.
 
 Bu repo; hem **Angular (SSR) web uygulamasını** hem de aynı process içerisinde çalışan **Express API katmanını** barındırır.
 
@@ -195,11 +195,11 @@ Bu sistemde “state” sadece API response’larıyla değil, **merkezi broadca
 
 ```mermaid
 flowchart TB
-	Action[API Action<br/>customer/kanban/activity/etc] --> BCU[broadcastCustomerUpdate]
-	BCU --> CU[Emit: customer-update<br/>io.emit]
-	BCU --> KB[Build permission-filtered board<br/>per user + department]
-	KB --> Room[Emit: kanban-update<br/>io.to(user:uid)]
-	Room --> UI[Angular Clients<br/>Kanban/CustomerViewer sync]
+  Action["API Action<br/>customer/kanban/activity/etc"] --> BCU["broadcastCustomerUpdate"]
+  BCU --> CU["Emit customer-update<br/>io.emit"]
+  BCU --> KB["Build permission-filtered board<br/>per user + department"]
+  KB --> Room["Emit kanban-update<br/>io.to('user-<id>')"]
+  Room --> UI["Angular Clients<br/>Kanban/CustomerViewer sync"]
 ```
 
 Önemli ayrıntılar:
