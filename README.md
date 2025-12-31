@@ -84,34 +84,34 @@ Bu yüzden mimaride iki kritik karar var:
 
 ```mermaid
 sequenceDiagram
-	autonumber
-	participant Src as Lead Source
-	participant Api as Express API
-	participant Db as MySQL (Sequelize)
-	participant Kb as Kanban (Card/Column)
-	participant Rt as Socket.IO
-	participant Ui as Angular UI
-	participant Cv as CustomerViewer
+  autonumber
+  participant Src as Lead Source
+  participant Api as Express API
+  participant Db as MySQL (Sequelize)
+  participant Kb as Kanban (Card/Column)
+  participant Rt as Socket.IO
+  participant Ui as Angular UI
+  participant Cv as CustomerViewer
 
-	Src->>Api: Lead arrives
-	Note over Src,Api: Example: POST /api/general/projectweb
-	Note over Src,Api: Webhooks: /api/meta/webhook | /api/instagram/webhook | /api/whatsapp/webhook
+  Src->>Api: Lead arrives
+  Note over Src,Api: Example: POST /api/general/projectweb
+  Note over Src,Api: Webhooks: /api/meta/webhook | /api/instagram/webhook | /api/whatsapp/webhook
 
-	Api->>Db: Upsert Customer (and context)
-	Api->>Db: Ensure KanbanCard exists
-	Api->>Kb: Move to columnId=1 (Potansiyel)
-	Api->>Db: Create/ensure pending Activity (Lead entry)
-	Api-->>Rt: Broadcast customer/kanban updates
+  Api->>Db: Upsert Customer (and context)
+  Api->>Db: Ensure KanbanCard exists
+  Api->>Kb: Move to columnId=1 (Potansiyel)
+  Api->>Db: Create/ensure pending Activity (Lead entry)
+  Api-->>Rt: Broadcast customer/kanban updates
 
-	Ui->>Kb: Work pipeline (move card)
-	Ui->>Cv: Open viewer
-	Cv->>Api: GET /api/customerviewer/:customerId/details
-	Note right of Api: Aggregates snapshot:<br/>responsibles + quality + reference<br/>activities + events (timeline)<br/>reminders + contracts + plots/deposits<br/>messages (WA/IG/Messenger) + latest UTM
-	Api-->>Cv: Aggregated customer payload
+  Ui->>Kb: Work pipeline (move card)
+  Ui->>Cv: Open viewer
+  Cv->>Api: GET /api/customerviewer/:customerId/details
+  Note right of Api: Aggregates snapshot:<br/>responsibles + quality + reference<br/>activities + events (timeline)<br/>reminders + contracts + plots/deposits<br/>messages (WA/IG/Messenger) + latest UTM
+  Api-->>Cv: Aggregated customer payload
 
-	Cv->>Api: Write ops (update/comment/reminder/event)
-	Api->>Db: Persist changes (may update lastContact)
-	Api-->>Rt: Broadcast updates for UI sync
+  Cv->>Api: Write ops (update/comment/reminder/event)
+  Api->>Db: Persist changes (may update lastContact)
+  Api-->>Rt: Broadcast updates for UI sync
 ```
 
 ### Kodda birebir karşılığı (kritik örnekler)
@@ -184,6 +184,107 @@ Müşteri üzerinde yapılan işlemlerin önemli bir kısmı “liste ekranı �
 - Backend agregasyon kaynağı: `GET /api/customerviewer/:customerId/details`
 - Bu endpoint tek çağrıda şunları getirir: müşteri temel alanları, sorumlular, UTM bağlamı, aktiviteler+event timeline, not/hatırlatıcılar, sözleşmeler/randevu bilgileri, plot/deposit akışı ve mesaj geçmişleri.
 - Sonuç: UI tarafında birden fazla endpoint’le “ilk ekranı toplama” yerine, **tek bir snapshot** ile ekran açılır; devamındaki aksiyonlar (comment/reminder/update/event) incremental olarak ilerler.
+
+### 6) Realtime Broadcast (Socket.IO ile tutarlılık)
+Bu sistemde “state” sadece API response’larıyla değil, **merkezi broadcast** ile de tutarlı tutulur. Amaç: Kanban/CustomerViewer/Chat gibi ekranlarda aynı müşteri üzerinde yapılan değişikliklerin diğer kullanıcılara anlık yansıması.
+
+- Merkez fonksiyon: `src/middlewares/broadcast.ts` → `broadcastCustomerUpdate(...)`
+- Temel event kanalları:
+	- `customer-update`: müşteri bazlı global sinyal (CREATED/UPDATED/DELETED)
+	- `kanban-update`: **user room** bazlı hedefli yayın (`user:<id>`) ve permission-filtered board snapshot
+
+```mermaid
+flowchart TB
+	Action[API Action<br/>customer/kanban/activity/etc] --> BCU[broadcastCustomerUpdate]
+	BCU --> CU[Emit: customer-update<br/>io.emit]
+	BCU --> KB[Build permission-filtered board<br/>per user + department]
+	KB --> Room[Emit: kanban-update<br/>io.to(user:uid)]
+	Room --> UI[Angular Clients<br/>Kanban/CustomerViewer sync]
+```
+
+Önemli ayrıntılar:
+- **Permission filtering**: Admin olmayan kullanıcılar için board snapshot’ı; kullanıcının sorumlu olduğu müşterilerle sınırlandırılabilir.
+- **Department filtering**: Kanban broadcast’ı departman bazında hedeflenir (Satış/Çağrı/Yönetici gibi).
+- **Action normalization**: Kanban aksiyonları client tarafında daha stabil işlenmesi için coarse bucket’lara normalize edilir (CREATE/UPDATE/DELETE).
+
+### 7) UTM attribution ve UTM bazlı filtreleme
+UTM bu projede sadece raporlama değil, **operasyonel filtreleme** için de kullanılır.
+
+- UTM kaynağı: `customer_utm` tablosu ve `CustomerUtmModel`
+- UTM’nin sisteme giriş yolları:
+	- Meta lead/webhook akışları UTM alanlarını çıkarır; eksikse default’lar uygulanabilir (örn. `utm_source=meta`, `utm_medium=paid`).
+	- CustomerViewer detay endpoint’i, müşteri için **latest UTM** kaydını ekrana taşır (operasyon ekibinin “hangi kampanyadan geldi” bilgisini hızlı görmesi için).
+
+Operasyonel filtreleme örnekleri:
+- **Kanban filtresi (UTM include/exclude/missing)**
+	- Kaynak: `src/routes/kanban.router.ts`
+	- `utmSources/utmMediums/utmCampaigns` seçimleri ile dahil etme
+	- `utmSourceExclude/utmMediumExclude/utmCampaignExclude` ile hariç tutma
+	- `utmSourceMissing/utmMediumMissing/utmCampaignMissing` ile “UTM boş” müşteri bulma
+
+- **Customers listesi (server-side filtre parametreleri)**
+	- Pattern: frontend `filter_*` query parametreleri üretir; backend `filter_*` parametrelerini where clause’a çevirir.
+	- Not: UTM gibi join gerektiren filtreler daha çok Kanban tarafında güçlüdür; CustomerViewer ise UTM’yi “gösterim/attribution” için snapshot’a dahil eder.
+
+### 8) Meta/Instagram/WhatsApp entegrasyonu ve reklam optimizasyonu (CAPI)
+Entegrasyon katmanı iki probleme aynı anda çözüm üretir:
+1) **Müşteri/lead oluşturma + operasyon akışına sokma** (Kanban + Activity)
+2) **Reklam optimizasyonu için CAPI event’leri** (dedup + güvenli tekrar deneme)
+
+#### 8.1 Lead → CRM (create/update + Kanban + Activity)
+- Meta webhook router: `src/routes/meta.router.ts`
+- Instagram webhook router: `src/routes/instagram.router.ts`
+- WhatsApp webhook router: `src/routes/whatsapp.router.ts`
+
+Ortak hedef:
+- Müşteriyi eşle/oluştur
+- Kanban kartını Potansiyel’e al (veya mevcut kartı güncelle)
+- Lead tipine göre Activity aç (örn. `WHATSAPP_LEAD`, `INSTAGRAM_LEAD`, `MESSENGER_LEAD`)
+- Realtime event ile UI’ı güncelle
+
+#### 8.2 CAPI event’leri (dedup + slot claim)
+- CAPI yardımcıları: `src/utils/capi.ts` (`createLeadEvent`, `createScheduleEvent`, `createDepositPurchaseEvent`, `createCompletedPurchaseEvent`, `sendCapiEvent`)
+- Dedup/storage: `CapiEventModel`
+
+Projede yaklaşım:
+- Aynı müşteri + eventType için tekrar gönderimleri kontrol etmek adına DB üzerinde kayıt tutulur.
+- Meta lead event’lerinde, “gönderme slot’u” önce DB’de claim edilir; duplicate veya zaten `sent/sending` ise tekrar gönderilmez.
+- Kanban/CustomerViewer gibi yerlerde event_id prefix’leri ile kaynağa göre ayrışan dedup anahtarları üretilir (örn. `kanban_*`, `column_*`).
+
+**8.2.1 Event tipleri (CRM aşaması → Meta standard event)**
+- **Lead**: Form/lead girişi
+	- `event_name: Lead`
+	- `event_id`: mümkünse `leadgenId` (yoksa deterministik fallback)
+- **Schedule (Randevu)**
+	- `event_name: Schedule`
+	- `value: 0` (randevu aşamasında gelir yok)
+- **AddToWishlist (Görüşüldü / Değerlendiriliyor)**
+	- `event_name: AddToWishlist`
+	- `value: 0`
+- **AddPaymentInfo (Kapora)**
+	- `event_name: AddPaymentInfo`
+	- `value`: kapora tutarı, `content_ids`: plot id listesi
+- **Purchase (Satış tamamlandı)**
+	- `event_name: Purchase`
+	- `value`: toplam satış tutarı, `content_ids`: plot id listesi
+
+> Not: CAPI payload’ında UTM ve kampanya bağlamı `custom_utm_*`, `custom_ad_id`, `custom_form_id` gibi alanlarla custom_data içine eklenir.
+
+**8.2.2 Dedup / idempotency tasarımı**
+- `sendCapiEvent()` Meta tarafına `event_id` ile gider; bu değer aynı event’in tekrar gönderilmesini engellemek için kritiktir.
+- Uygulama tarafında ayrıca `capi_events` tablosu ile dedup garanti edilir:
+	- Şema: `src/models/capi-events.ts`
+	- Unique index: `eventId`
+	- Status: `pending | sending | sent | failed`
+	- `attempts`, `lastError`, `responseJson` ile izlenebilirlik
+
+**8.2.3 Gönderim önkoşulları (prod readiness)**
+- `META_ACCESS_TOKEN` ve `META_PIXEL_ID` yoksa CAPI event’i **gönderilmez**; sistem “loglayıp skip” eder.
+- CAPI logları (ops/debug): `logs/capi-events.log`
+
+**8.2.4 PII / log güvenliği**
+- Meta CAPI user_data alanları hash’lenerek hazırlanır (email/phone/name vb.).
+- Debug amaçlı “raw PII logging” sadece geliştirme ortamında düşünülmelidir; prod’da kapalı tutulması beklenir.
 
 ---
 
@@ -342,10 +443,19 @@ Bu katman; gelen event’leri **müşteri oluşturma/güncelleme**, **Kanban kar
 - Token; header (`Authorization: Bearer ...`), cookie (`token`) veya query (`?token=...`) üzerinden okunabilir.
 - Refresh token cookie üzerinden doğrulanır ve access token otomatik yenilenebilir.
 
+Ek notlar:
+- API’lerin çoğu `authenticateToken` middleware’i ile korunur.
+- Bazı entegrasyon/website akışlarında internal token ile kontrollü bypass bulunabilir (trusted caller).
+
 ### 🧾 Authorization (Permission Modules)
 Frontend tarafında modül bazlı permission guard uygulanır:
 - Kaynak: `src/app/guards/permission.guard.ts`
 - Modüller: `dashboard`, `customers`, `appointments`, `campaigns`, `projects`, `work-orders`, `kanban`, `inventory`, `reports`, `analysis`, `settings`, `user-management`, `chat`, `notes`, `files`, ...
+
+Backend tarafında authorization katmanları:
+- **Role tabanlı**: Bazı kritik endpoint’ler sadece `admin` (örn. System Config / backup / restart).
+- **Responsible tabanlı**: CustomerViewer gibi “yüksek yoğunluklu” endpoint’lerde admin olmayan kullanıcı için müşteri, kullanıcının sorumluluk listesinde değilse `403` döner.
+- **Permission API**: UI, `/api/permissions/*` üzerinden permission set’lerini alır ve ekran aksiyonlarını (view/read/write/update/delete) buna göre açar/kapatır.
 
 Backend tarafında permission yönetimi:
 - `/api/permissions/me`
