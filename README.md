@@ -25,7 +25,7 @@
 	- [Prod-Ready Notlar](#prod-ready-notlar)
 	- [Özellikler (Modül Bazlı)](#özellikler-modül-bazlı)
 	- [Frontend Route Yapısı](#frontend-route-yapısı)
-	- [Backend API Route Yapısı](#backend-api-route-yapısı)
+	- [Backend Modül Haritası](#backend-modül-haritası)
 	- [Meta / Instagram / WhatsApp (Webhook + Mesajlaşma)](#meta--instagram--whatsapp-webhook--mesajlaşma)
 	- [Yetkilendirme Modeli](#yetkilendirme-modeli)
 	- [System Config & Runtime Secret Yönetimi](#system-config--runtime-secret-yönetimi)
@@ -54,10 +54,10 @@ Bu repo; hem **Angular (SSR) web uygulamasını** hem de aynı process içerisin
 ```mermaid
 flowchart TB
   User[User / Browser] -->|HTTPS| Web[Angular SSR + SPA]
-  Web -->|/api/*| Api[Express API]
+	Web -->|API| Api[Express API]
   Api -->|Sequelize| Db[(MySQL)]
   Web <--> |Socket.IO| Realtime[Socket.IO Gateway]
-  Providers[Meta / Instagram / WhatsApp] -->|/api/*/webhook| Api
+	Providers[Meta / Instagram / WhatsApp] -->|Webhooks| Api
   Api --> Uploads[(public/uploads)]
 ```
 
@@ -94,8 +94,7 @@ sequenceDiagram
   participant Cv as CustomerViewer
 
   Src->>Api: Lead arrives
-  Note over Src,Api: Example: POST /api/general/projectweb
-  Note over Src,Api: Webhooks: /api/meta/webhook | /api/instagram/webhook | /api/whatsapp/webhook
+	Note over Src,Api: Lead ingestion (Website + Webhooks)
 
   Api->>Db: Upsert Customer (and context)
   Api->>Db: Ensure KanbanCard exists
@@ -105,7 +104,7 @@ sequenceDiagram
 
   Ui->>Kb: Work pipeline (move card)
   Ui->>Cv: Open viewer
-  Cv->>Api: GET /api/customerviewer/:customerId/details
+	Cv->>Api: Load aggregated customer snapshot
   Note right of Api: Aggregates snapshot:<br/>responsibles + quality + reference<br/>activities + events (timeline)<br/>reminders + contracts + plots/deposits<br/>messages (WA/IG/Messenger) + latest UTM
   Api-->>Cv: Aggregated customer payload
 
@@ -118,7 +117,7 @@ sequenceDiagram
 
 - **Website lead → Potansiyel + Aktivite**
 	- Kaynak: `src/routes/general.router.ts`
-	- `POST /api/general/projectweb` akışı:
+	- Akış (özet):
 		- Telefon ile müşteri kontrolü → yoksa müşteri oluşturur (`source: Website`)
 		- Kanban kartı yoksa oluşturur; varsa **Potansiyel (columnId: 1)** kolona taşır
 		- Yeni müşteri için `ActivityName.POTANSIYEL_MUSTERI_GIRISI` oluşturur
@@ -126,9 +125,9 @@ sequenceDiagram
 
 - **CustomerViewer = agregasyon + operasyon API**
 	- Kaynak: `src/routes/customerviewer.router.ts`
-	- `GET /api/customerviewer/:customerId/details`:
+	- Agregasyon (özet):
 		- Yetki: admin değilse, kullanıcı müşteri “responsible” listesinde olmalı
-		- Agregasyon: responsibles, quality skorları, reference, applied projects, activities+events (timeline), reviews, contracts, plots+deposit, mesaj geçmişi (WhatsApp/IG/Messenger), latest UTM, reminders ve log sayısı
+		- Snapshot: responsibles, quality skorları, reference, applied projects, activities+events (timeline), reviews, contracts, plots+deposit, mesaj geçmişi (WhatsApp/IG/Messenger), latest UTM, reminders ve log sayısı
 
 > Not: CustomerViewer, route bazlı “/customers/:id” sayfasını tamamlayan bir operasyon ekranıdır. Projede birçok noktadan (Toolbar hızlı arama, Chat kartı, Kanban kartı) viewer açılarak işlem akışı hızlandırılır.
 
@@ -173,17 +172,159 @@ Aktivite sistemi; müşteri operasyonlarını “tekil bir aktivite” ve onun �
 	- `type`: `CALL`, `COMMENT`, `MOVE`, `STATUS_CHANGE`, `DEPOSIT_TAKEN`, `META_WEBHOOK_LEAD`, ...
 	- `metadata`: JSON (kanban kolonları, entegrasyon payload referansları vb. için)
 
-API davranışı (özet):
-- `POST /api/activities`: müşteri için aktivite oluşturur, gerekiyorsa kanban kartı oluşturma/taşıma akışını tetikler.
-- `GET /api/activities/:customerId`: müşteri aktivitelerini ve son event’leri getirir.
-- `POST /api/activities/:id/events`: timeline’a event ekler; CALL/VIDEO_CALL gibi event’lerde `lastContact` güncellemesi yapılabilir.
+Servis davranışı (özet):
+- Aktivite oluşturma ve gerektiğinde Kanban kartı açma/taşıma
+- Aktivite listesi + event timeline görünümü (performans için son event’lerde limit yaklaşımı)
+- Timeline’a event yazma; CALL/VIDEO_CALL gibi event’lerde `customers.lastContact` güncellenebilmesi
+
+#### 4.1 Activity Servisi (basic lifecycle + timeline)
+Bu katman “basic” aktivite/timeline işlemlerini sağlar.
+
+- Kaynak: `src/routes/activities.router.ts`
+- Kapsam: aktivite oluşturma/güncelleme/bitirme, event yazma, son event’leri çekme, pagination
+- Kritik yan etkiler:
+	- CALL/VIDEO_CALL → `customers.lastContact` güncellenebilir
+	- Bazı aksiyonlarda Kanban kartı oluşturma/kolon taşıma ve realtime broadcast tetiklenebilir
+
+> Not: Aktivite event yazma, bazı ekranlarda alternatif bir route üzerinden de yapılır; pratikte iki farklı “event create” yolu aynı işi görür.
+
+#### 4.2 CustomerViewer Aktivite Tamamlama (Orkestrasyon)
+CustomerViewer; “aktiviteyi tamamla” aksiyonunu sadece `status=Completed` yapmak olarak görmez. Sonuca göre **kanban taşıma**, **plot/deposit/contributor operasyonları**, **bildirim**, **log**, **UTM bağlama** ve **CAPI event** gibi işleri tek bir orkestrasyon endpoint’inde toplar.
+
+
+- Kaynak: `src/routes/customerviewer.router.ts`
+- Input (özet):
+	- `result` (**zorunlu**)
+	- `note` (opsiyonel: tamamlamaya açıklama)
+	- `appointmentData` (opsiyonel: randevu bilgisi)
+	- `allPlots` (opsiyonel: çoklu plot için kapora/satış akışına giriş)
+
+**Ortak yan etkiler (çoğu senaryoda)**
+- Timeline’a `STATUS_CHANGE` event’i eklenir (bazı sonuçlarda ek event’ler de eklenir).
+- `note` doluysa:
+	- Activity timeline’a `COMMENT` event düşer
+	- Müşteri “yorumlar” listesine `CustomerReview` olarak da kaydedilir.
+- `CustomerLog` + (non-blocking) `UserLog` yazılır.
+- Broadcast: `broadcastCustomerUpdate(customerId, 'UPDATED', {...}, 'ACTIVITY')` ile UI senkronize edilir.
+- Güvenlik amaçlı “lastContact safeguard”: sonuç metni görüşme/arama içeriyorsa `customers.lastContact` güncellenebilir.
+
+**Result bazlı iş kuralları (kritik akışlar)**
+- **Randevu → Kapora Alındı** (`activity=RANDEVU` + `result=KAPORA_ALINDI`)
+	- `allPlots` üzerinden her plot için deposit + contributor kayıtları oluşturulur (aktif deposit varsa önce iptal edilir).
+	- Plot’lar `Kapora Alındı` statüsüne alınır ve `reservationDate` yazılır.
+	- RANDEVU aktivitesi `Completed` yapılır.
+	- Yeni bir **KAPORA** aktivitesi `Pending` olarak açılır.
+	- CAPI: `AddPaymentInfo` event’i (business rule: `value` sabit `30000`) gönderilmeye çalışılır; hata olsa da ana akış kesilmez.
+	- Kanban: müşteri `Kapora Alındı` kolonuna taşınır.
+
+- **Kapora → Satış Tamamlandı (çoklu satış)** (`activity=KAPORA` + `result=SATIS_TAMAMLANDI`)
+	- Plot’lar `Satış Tamamlandı` statüsüne alınır; contributor kayıtları güncellenebilir.
+	- “Tüm kaporalar satıldı mı?” kontrol edilir (`checkAllDepositsCompleted`).
+	- Hepsi tamamlandıysa:
+		- CAPI: `Purchase` event’i gönderilmeye çalışılır.
+		- Aktivite `Completed` yapılır.
+		- Kanban: müşteri `Satış Tamamlandı` kolonuna taşınır.
+	- Kısmi tamamlandıysa:
+		- Aktivite **açık bırakılır** (status Completed yapılmaz) ve kalan satışlar beklenir.
+
+- **Kapora iptali** (`activity=KAPORA` + `result != SATIS_TAMAMLANDI`)
+	- Müşterinin `Kapora Alındı` plot’ları `Müsait` yapılır, ilişkilendirme alanları temizlenir.
+	- İlgili aktif deposit’ler `İptal` yapılır.
+	- Kanban: result’a göre hedef kolon hesabı yapılıp (örn. “bütçesi yetersiz” vb.) müşteri taşınabilir.
+
+- **Potansiyel/Lead → Randevu Alındı** (`POTANSIYEL_MUSTERI_GIRISI | WHATSAPP_LEAD | INSTAGRAM_LEAD | MESSENGER_LEAD | YENIDEN_BASVURU | GELMEYEN_MUSTERI` + `result=RANDEVU_ALINDI`)
+	- Yeni bir **RANDEVU** aktivitesi `Pending` olarak açılır.
+	- CustomerContract + CustomerReminder (tekil reminder kuralı) üretilebilir.
+	- CAPI: `Schedule` event’i randevu tarih/saatine göre (gerçek appointment timestamp ile) gönderilmeye çalışılır.
+	- Kanban: müşteri `Randevu Alındı` kolonuna taşınır.
+
+- **Randevu → Satış Tamamlandı** (`activity=RANDEVU` + `result=SATIS_TAMAMLANDI`)
+	- Yalnızca “tüm kaporalar satıldı” koşulu sağlanırsa müşteri `Satış Tamamlandı` kolonuna taşınır.
+	- CAPI: `Purchase` event’i bu noktada gönderilmeye çalışılır.
+	- Kısmi durumlarda aktivite açık bırakılabilir.
+
+- **Müşteri gelmedi** (`result="Müşteri Gelmedi"`)
+	- Yeni **GELMEYEN_MUSTERI** aktivitesi açılır.
+	- Kanban: müşteri `Takip edilecek (Çağrı)` kolonuna taşınır.
+	- Bildirim: sorumlulara ayrıca “no-show” bildirimi düşebilir.
+
+> Not: CustomerViewer completion akışı ayrıca, belirli activity tiplerinde en güncel `customer_utm` kaydına `activityId` bağlayarak “hangi UTM hangi operasyonda kapandı” bilgisini kalıcılaştırır.
+
+#### 4.3 Kanban Modülü (Board/Column/Card API + Filtreleme)
+Kanban; CRM’in “pipeline” ekranıdır. Kart/kolon değişimleri sadece UI state’i değildir; **log**, **timeline event**, **bildirim hijyeni**, **realtime broadcast** ve belirli aşamalarda **CAPI** gibi yan etkileri de tetikler.
+
+- Router: `src/routes/kanban.router.ts`
+
+**Modül yetenekleri (yük düzeyi ve UI ihtiyaçlarına göre optimize)**
+- Board + kolon metadata (multi-board desteği)
+- Column bazlı lazy loading + pagination (tek kolon modunda sayfalama)
+- Board snapshot (her kolondan “ilk ekran” için limitli kart çekimi)
+- Arama (board + departman kısıtlarını dikkate alır)
+- Filtre seçenekleri üretimi (distinct kaynaklar, distinct UTM’ler, assignee listesi)
+- Kart aksiyonları: taşıma, “görüldü” işaretleme, silme
+- Admin operasyonları: bulk move, select-all dataseti çıkarma, CSV export
+
+**Filtre parametreleri (board/kolon sorguları ile uyumlu)**
+- `assignees=1,2` / `assigneesMissing=true` (admin için “sorumlusu olmayanlar”)
+- `sources=Website,Meta` / `sourceMissing=true`
+- `activities=RANDEVU,KAPORA` (aktif `Pending` activity name bazlı)
+- `appliedProjectIds=1,2`
+- `customerQualityScores=1,2,3` ve `conversionQualityScores=3,4,5`
+- Tarih: `dateType=today|yesterday|tomorrow|overdue|custom` (+ `from=YYYY-MM-DD`) → `customers.lastContact` üzerinden filtrelenir
+- Hatırlatıcı: `reminderDateFilter=none|overdue|yesterday|today|tomorrow|custom` (+ `customReminderDate=YYYY-MM-DD`)
+
+**UTM filtreleri (include / exclude / missing)**
+- Include (default): `utmSources/utmMediums/utmCampaigns` seçili değerleri **dahil eder**
+- Exclude: `utmSourceExclude=true` (+ `utmSources=...`) gibi parametrelerle seçili değerleri **hariç tutar** (anti-join / subquery yaklaşımı)
+- Missing: `utmSourceMissing=true` gibi parametrelerle ilgili UTM alanı boş olanları hedefler (legacy “missing-only” davranışı)
+
+**Kart taşıma (move) — güvenlik ve iş kuralları**
+- Yetki: admin olmayan kullanıcılar yalnızca `Customer.responsibles` listesinde olduğu müşterilerin kartını taşıyabilir.
+- Kritik kural: müşterinin en güncel `Pending` aktivitesi `KAPORA` veya `YENIDEN_SATIS_KAPORA` ise, hedef kolon başlığı “Satış Tamamlandı” içeriyorsa **manuel taşıma engellenir** (aktivitenin completion orkestrasyonu beklenir).
+- CAPI (AddToWishlist): hedef kolon başlığı “Görüşüldü Değerlendiriliyor” içeriyorsa `AddToWishlist` gönderimi denenir.
+	- Dedup/idempotency: `capi_events` üzerinde `kanban_WISHLIST_<sha1>` event_id ile “once” yaklaşımı.
+	- `leadgen_id` yoksa event atlanır; hata olsa da move akışı **bloklanmaz**.
+- Yan etkiler:
+	- `CustomerLog` (action: `KANBAN_MOVE`)
+	- Expired notification temizliği (`purgeExpiredCustomerNotifications`)
+	- Broadcast: `broadcastCustomerUpdate(customerId, 'CARD_MOVED', ...)` (boardId paramı hedef kolondan türetilir)
+	- Timeline: aktif aktivitelerin hepsine `ActivityEventType.MOVE` event’i eklenir.
+
+**Toplu operasyonlar (admin-only)**
+
+- Bulk move UI için kolon listesi (id=9 hariç).
+- Toplu taşıma:
+	- Body: `customerIds[]`, `targetColumnId`
+	- Hedef kolon `id=9` olamaz.
+	- Aktivite bazlı kısıtlar (örnekler):
+		- `POTANSIYEL_MUSTERI_GIRISI`, `YENIDEN_PAZARLAMA`, `YENIDEN_BASVURU` sadece 1–4
+		- `RANDEVU` sadece 4–8
+		- `KAPORA`/`YENIDEN_SATIS_KAPORA` ile “Satış Tamamlandı” (id=8) hedefi engellenir
+	- Kısmi başarı: taşınanlar + atlananlar birlikte döner; hiçbiri taşınamazsa 400 + detaylı `validationErrors`.
+	- Broadcast: tek sefer `BULK_CARDS_MOVED` (coarse sync).
+
+**“Select All” ve CSV Export**
+
+- “Select All” için: aktif filtrelerle eşleşen **tüm müşterileri** dönen listeleme (opsiyonel search desteği).
+- CSV export (admin-only):
+	- Body: `fields[]` + `filters{...}`
+	- Çıktı: UTF-8 BOM ile Excel uyumlu CSV (`name/email/phone/source/address/lastContact/responsibles` alanları).
 
 ### 5) CustomerViewer (tek ekran operasyon yaklaşımı)
 Müşteri üzerinde yapılan işlemlerin önemli bir kısmı “liste ekranı → müşteri detay route’u” yerine **CustomerViewer modal** üzerinden yürür.
 
-- Backend agregasyon kaynağı: `GET /api/customerviewer/:customerId/details`
+- Backend agregasyon kaynağı: `src/routes/customerviewer.router.ts` içindeki “details snapshot” akışı
 - Bu endpoint tek çağrıda şunları getirir: müşteri temel alanları, sorumlular, UTM bağlamı, aktiviteler+event timeline, not/hatırlatıcılar, sözleşmeler/randevu bilgileri, plot/deposit akışı ve mesaj geçmişleri.
 - Sonuç: UI tarafında birden fazla endpoint’le “ilk ekranı toplama” yerine, **tek bir snapshot** ile ekran açılır; devamındaki aksiyonlar (comment/reminder/update/event) incremental olarak ilerler.
+
+#### 5.1 CustomerViewer Route Yapısı (özet)
+CustomerViewer; “tek ekran operasyon” için hem agregasyon hem de yazma (write) uçlarını aynı router altında toplar.
+
+Bu router (özetle) şu capability’leri sağlar:
+- Agregasyon snapshot (customer + responsibles + quality + latest UTM + activities + timeline + reminders + plot/deposit + messages)
+- Operasyon aksiyonları (comment/reminder/budget/quality vb.)
+- Aktivite tamamlama orkestrasyonu (result bazlı yan etkiler: kanban taşıma + CAPI + log + bildirim)
+- WhatsApp session penceresi gibi “ek hesaplama” uçları
 
 ### 6) Realtime Broadcast (Socket.IO ile tutarlılık)
 Bu sistemde “state” sadece API response’larıyla değil, **merkezi broadcast** ile de tutarlı tutulur. Amaç: Kanban/CustomerViewer/Chat gibi ekranlarda aynı müşteri üzerinde yapılan değişikliklerin diğer kullanıcılara anlık yansıması.
@@ -387,36 +528,34 @@ Kaynak: `src/app/app.routes.ts`
 
 ---
 
-## Backend API Route Yapısı
+## Backend Modül Haritası
 
 Sunucu entry: `src/server.ts`
 
-Tüm API’ler `/api` altında mount edilir:
+Bu repo backend tarafında route’ları “domain router” mantığında ayırır. README seviyesinde tek tek endpoint yazmak yerine, **hangi işin hangi router’da olduğuna dair modül haritası** tutulur:
 
-| Base Path | Router | Not |
+| Domain | Router | Sorumluluk |
 |---|---|---|
-| `/api` | `general.router.ts` | Website lead girişleri + temel listeler |
-| `/api/user` | `user.router.ts` | Login/refresh/logout/profile/avatar |
-| `/api/permissions` | `permissions.router.ts` | Permission okuma/yazma |
-| `/api/customers` | `customer.router.ts` | Müşteri CRUD + ilişkiler |
-| `/api/customerviewer` | `customerviewer.router.ts` | Detay ekranı yoğun uçlar |
-| `/api/kanban` | `kanban.router.ts` | Board/column/card aksiyonları |
-| `/api/appointments` | `appointments.router.ts` | Randevu işlemleri |
-| `/api/activities` | `activities.router.ts` | Aktivite + event akışı |
-| `/api/notes` | `notes.router.ts` | Notlar |
-| `/api/inventory` | `inventory.router.ts` | Plot/stock |
-| `/api/work-orders` | `work-orders.router.ts` | İş emirleri |
-| `/api/work-order-workflows` | `work-order-workflow.router.ts` | Workflow tanımları |
-| `/api/chat` | `chat.router.ts` | Chat + unified inbox |
-| `/api/notifications` | `notification.router.ts` | Bildirim & hatırlatıcı uçları |
-| `/api/analysis` | `analysis.router.ts` | Analiz rapor uçları |
-| `/api/plot-sales-analysis` | `plot-sales-analysis.router.ts` | Plot/satış analizi |
-| `/api/campaign-analytics` | `campaign-analytics.router.ts` | Meta insights vb. |
-| `/api/meta` | `meta.router.ts` | Meta Leadgen + Messenger webhook |
-| `/api/instagram` | `instagram.router.ts` | Instagram webhook + mesaj |
-| `/api/whatsapp` | `whatsapp.router.ts` | WhatsApp webhook + mesaj |
-| `/api/google-drive` | `google-drive.router.ts` | Drive işlemleri |
-| `/api/system-config` | `system-config.router.ts` | Runtime config + backup + restart |
+| Lead ingestion (Website) | `src/routes/general.router.ts` | Lead/customer upsert + ilk Kanban/Activity üretimi |
+| Auth & Profile | `src/routes/user.router.ts` | Login/refresh/logout + avatar/profile |
+| Permissions | `src/routes/permissions.router.ts` | Modül bazlı permission okuma/yazma |
+| Customers | `src/routes/customer.router.ts` | Customer CRUD + ilişkiler |
+| CustomerViewer | `src/routes/customerviewer.router.ts` | Agregasyon snapshot + write/orkestrasyon aksiyonları |
+| Kanban | `src/routes/kanban.router.ts` | Board/column/card operasyonları + filtreleme + bulk/export |
+| Activities | `src/routes/activities.router.ts` | Activity lifecycle + timeline event akışı |
+| Appointments | `src/routes/appointments.router.ts` | Randevu operasyonları |
+| Notes | `src/routes/notes.router.ts` | Not yönetimi |
+| Inventory/Plot | `src/routes/inventory.router.ts` | Plot/stock yönetimi |
+| Work Orders | `src/routes/work-orders.router.ts` | İş emri yaşam döngüsü |
+| Workflow | `src/routes/work-order-workflow.router.ts` | Workflow tanımları |
+| Chat / Unified Inbox | `src/routes/chat.router.ts` | Internal chat + sosyal mesajlaşma birleşimi |
+| Notifications | `src/routes/notification.router.ts` | Bildirim & hatırlatıcı uçları |
+| Analysis/Reports | `src/routes/analysis.router.ts` | Analiz rapor uçları |
+| Plot Sales Analysis | `src/routes/plot-sales-analysis.router.ts` | Plot/satış analizi |
+| Campaign Analytics | `src/routes/campaign-analytics.router.ts` | Kampanya analitiği |
+| Meta/Instagram/WhatsApp | `src/routes/meta.router.ts` + `src/routes/instagram.router.ts` + `src/routes/whatsapp.router.ts` | Webhook ingest + mesajlaşma + CAPI tetikleme |
+| Google Drive | `src/routes/google-drive.router.ts` | Drive dosyalama |
+| System Config | `src/routes/system-config.router.ts` | Runtime config + backup + restart |
 
 > Not: API’lerin çoğu `authenticateToken` ile korunur.
 
@@ -424,10 +563,7 @@ Tüm API’ler `/api` altında mount edilir:
 
 ## Meta / Instagram / WhatsApp (Webhook + Mesajlaşma)
 
-Webhook endpoint’leri server start sırasında loglanır:
-- `.../api/meta/webhook`
-- `.../api/instagram/webhook`
-- `.../api/whatsapp/webhook`
+Webhook uçları server start sırasında loglanır ve entegrasyon sağlayıcılarına tanıtılır.
 
 Bu katman; gelen event’leri **müşteri oluşturma/güncelleme**, **Kanban kartı üretme**, **bildirim üretme**, **CAPI event gönderme** ve **realtime broadcast** akışlarına bağlar.
 
@@ -455,12 +591,7 @@ Frontend tarafında modül bazlı permission guard uygulanır:
 Backend tarafında authorization katmanları:
 - **Role tabanlı**: Bazı kritik endpoint’ler sadece `admin` (örn. System Config / backup / restart).
 - **Responsible tabanlı**: CustomerViewer gibi “yüksek yoğunluklu” endpoint’lerde admin olmayan kullanıcı için müşteri, kullanıcının sorumluluk listesinde değilse `403` döner.
-- **Permission API**: UI, `/api/permissions/*` üzerinden permission set’lerini alır ve ekran aksiyonlarını (view/read/write/update/delete) buna göre açar/kapatır.
-
-Backend tarafında permission yönetimi:
-- `/api/permissions/me`
-- `/api/permissions/user/:userId`
-- `/api/permissions/user/:userId/bulk`
+- **Permission API**: UI permission set’lerini backend’den alır ve ekran aksiyonlarını (view/read/write/update/delete) buna göre açar/kapatır.
 
 ---
 
@@ -475,10 +606,7 @@ Kaynak: `src/utils/runtime-config.ts` + `src/routes/system-config.router.ts`
 - DB içinde AES-256-GCM ile şifreleme (opsiyonel): `APP_CONFIG_ENCRYPTION_KEY`
 - ENV fallback (bootstrapping ve acil durum)
 
-API:
-- `GET /api/system-config/definitions` (admin)
-- `PUT /api/system-config/:key` (admin)
-- `DELETE /api/system-config/:key` (admin)
+API yüzeyi admin-only’dir; detay için `src/routes/system-config.router.ts`.
 
 ---
 
@@ -498,7 +626,7 @@ Kaynaklar:
 ## Dosya & Medya Yönetimi
 
 - Statik servis: `/uploads` → `public/uploads`
-- Avatar upload: `POST /api/user/profile/avatar` (multer)
+- Avatar upload: `src/routes/user.router.ts` (multer)
 
 Klasörler:
 - `public/uploads/avatars`
@@ -514,11 +642,10 @@ Klasörler:
 - Kaynak: `src/utils/mysqldump-backup.ts` + `src/server.ts`
 
 ### 🧰 Manuel Backup (Admin)
-- `POST /api/system-config/backup`
-- `GET /api/system-config/backup/download`
+- Admin backup uçları `src/routes/system-config.router.ts` altında bulunur.
 
 ### ♻️ Restart / Rebuild (Admin)
-- `POST /api/system-config/restart`
+
 	- Lokal: `src/restart.trigger` yazıp nodemon ile rebuild tetikler
 	- Prod (PM2): `pm2 stop 0 -> ng build -> pm2 start 0`
 
@@ -581,7 +708,7 @@ npm run serve:ssr:arvivacrm
 ```
 src/
 	app/                 # Angular UI
-	routes/              # Express routers (/api/*)
+	routes/              # Express routers
 	models/              # Sequelize modelleri
 	middlewares/         # Auth + broadcast + vb.
 	utils/               # Yedekleme, runtime config, job scheduler, helpers
