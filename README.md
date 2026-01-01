@@ -20,6 +20,21 @@
 	<img alt="SSR" src="https://img.shields.io/badge/SSR-Angular%20SSR-7b1fa2" />
 </div>
 
+<br/>
+<div align="center">
+    <h3>🚀 Canlı Demo (UI/UX Önizleme)</h3>
+    <a href="https://crm.arifcan.cloud-ip.cc/" target="_blank">
+        <b>https://crm.arifcan.cloud-ip.cc/</b>
+    </a>
+    <br/><br/>
+    <i>
+        ⚠️ <b>Önemli Not:</b> Bu bağlantı, yalnızca arayüz tasarımını ve genel mimariyi incelemeniz için hazırlanmış bir sandbox ortamıdır.<br/>
+        Güvenlik protokolleri gereği <b>prodüksiyon ortam değişkenleri (ENV), veritabanı bağlantıları ve API servisleri</b> bu demoda aktif edilmemiştir.<br/>
+        Bu nedenle formlar ve dinamik veri akışları işlevsiz olabilir.
+    </i>
+</div>
+<br/>
+
 Modern CRM; **lead ve müşteri yönetimi**, **satış süreci (pipeline) takibi**, **iş emri operasyonları**, **ajanda + otomatik hatırlatıcı**, **dosyalama/drive**, **raporlama** ve **tek platformda çok kanallı mesajlaşma** (WhatsApp/Instagram/Messenger + internal chat) yeteneklerini birleştiren kurumsal bir sistemdir.
 
 Bu doküman yazılımcı olmayan (İK / operasyon / yönetim) okuyucular için hazırlanmıştır: amaç **sistemin hangi parçalarının ne yaptığını**, **müşteri yaşam döngüsünü** ve **organizasyonel işleyişe etkisini** anlaşılır şekilde anlatmaktır.
