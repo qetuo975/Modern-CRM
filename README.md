@@ -28,11 +28,10 @@
     </a>
     <br/><br/>
     <i>
+		E-Posta : admin@moderncrm.local / Şifre : demo123
         ⚠️ <b>Önemli Not:</b> Bu bağlantı, yalnızca arayüz tasarımını ve genel mimariyi incelemeniz için hazırlanmış bir sandbox ortamıdır.<br/>
         Güvenlik protokolleri gereği <b>prodüksiyon ortam değişkenleri (ENV), veritabanı bağlantıları ve API servisleri</b> bu demoda aktif edilmemiştir.<br/>
-        Bu nedenle formlar ve dinamik veri akışları işlevsiz olabilir.
-
-		E-Posta : admin@moderncrm.local / Şifre : demo123
+        Bu nedenle formlar ve dinamik veri akışları işlevsiz olabilir. 
     </i>
 </div>
 <br/>
