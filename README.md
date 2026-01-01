@@ -37,6 +37,7 @@ Bu doküman yazılımcı olmayan (İK / operasyon / yönetim) okuyucular için h
 - [Gerçek Zamanlı Güncellemeler (Broadcast / WebSocket)](#gerçek-zamanlı-güncellemeler-broadcast--websocket)
 - [Chat & Unified Inbox](#chat--unified-inbox)
 - [Santral / Telekomünikasyon (Sabit Hat Arama)](#santral--telekomünikasyon-sabit-hat-arama)
+- [Görüntülü Görüşme (Meet Benzeri)](#görüntülü-görüşme-meet-benzeri)
 - [Multi-select & Toplu İşlemler](#multi-select--toplu-işlemler)
 - [Meta / Instagram / WhatsApp Entegrasyonları](#meta--instagram--whatsapp-entegrasyonları)
 - [WhatsApp Template Pazarlama (Broadcast)](#whatsapp-template-pazarlama-broadcast)
@@ -361,6 +362,44 @@ sequenceDiagram
 ```
 
 > Not (uyumluluk): Arama kayıtları ve görüşme içerikleri; KVKK/izin/kurum politikalarına göre ele alınmalıdır (gerekirse maskeleme, saklama süresi, erişim yetkisi).
+
+---
+
+## Görüntülü Görüşme (Meet Benzeri)
+
+Sistem içinde, “Meet benzeri” **online görüntülü görüşme** akışı bulunur. Bu özellik; satış/operasyon ekibinin müşteriyle görüntülü görüşmeyi CRM’den başlatıp yönetmesini ve görüşmeyi müşteri kaydıyla ilişkilendirmesini hedefler.
+
+Kazanımlar:
+
+- Görüşme linki/oda bilgisi dağınık kalmaz; müşteri kaydına bağlı olur
+- Görüşme sonrası not ve sonuçlar CustomerViewer üzerinden kolayca işlenir
+- Takip kalitesi artar: görüşme aktivitesi timeline’da görünür
+
+Örnek kullanım akışı:
+
+- CustomerViewer üzerinden **görüntülü görüşme başlat** / oda oluştur
+- Link, müşteriyle paylaşılır (kurumsal süreçlere uygun şekilde)
+- Görüşme bittikten sonra not/sonuç girilir ve süreç (aktivite/kanban) ilerletilir
+
+```mermaid
+sequenceDiagram
+	autonumber
+	participant U as Satış/Operasyon
+	participant CRM as CRM
+	participant VC as Video Görüşme Odası
+	participant C as Müşteri
+
+	U->>CRM: Görüntülü görüşme başlat
+	CRM->>VC: Oda oluştur / oturum başlat
+	CRM-->>U: Oda linki
+	U-->>C: Link paylaşımı
+	C->>VC: Görüşmeye katıl
+	U->>VC: Görüşmeye katıl
+	VC-->>CRM: Görüşme bitti (özet/durum)
+	CRM-->>U: Timeline + sonuç/not girişi
+```
+
+> Not (uyumluluk): Görüşme içeriği/katılımcı verileri ve olası kayıt (recording) politikaları KVKK ve kurum standartlarına göre yönetilmelidir.
 
 ---
 
