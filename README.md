@@ -1,6 +1,21 @@
-# Modern CRM (Ürün & Sistem Dokümanı)
+## Modern CRM 🚀
 
-Modern CRM; **lead ve müşteri yönetimi**, **satış süreci (pipeline) takibi**, **iş emri operasyonları**, **hatırlatıcı/not**, **raporlama** ve **çok kanallı mesajlaşma** (WhatsApp/Instagram/Messenger) yeteneklerini tek platformda birleştiren kurumsal bir sistemdir.
+<div align="center">
+	<b>Kurumsal CRM – Tek platformda satış, operasyon, mesajlaşma ve entegrasyonlar</b><br/>
+	<i>Lead → Pipeline (Kanban) → Operasyon (CustomerViewer) → Raporlama</i>
+</div>
+
+<div align="center">
+	<img alt="Angular" src="https://img.shields.io/badge/Angular-19-red?logo=angular" />
+	<img alt="Node" src="https://img.shields.io/badge/Node.js-18+-3c873a?logo=node.js&logoColor=white" />
+	<img alt="Express" src="https://img.shields.io/badge/Express-4-black?logo=express" />
+	<img alt="MySQL" src="https://img.shields.io/badge/MySQL-8-blue?logo=mysql&logoColor=white" />
+	<img alt="Sequelize" src="https://img.shields.io/badge/Sequelize-6-52B0E7?logo=sequelize" />
+	<img alt="Socket.IO" src="https://img.shields.io/badge/Socket.IO-4-black?logo=socket.io" />
+	<img alt="SSR" src="https://img.shields.io/badge/SSR-Angular%20SSR-7b1fa2" />
+</div>
+
+Modern CRM; **lead ve müşteri yönetimi**, **satış süreci (pipeline) takibi**, **iş emri operasyonları**, **ajanda + otomatik hatırlatıcı**, **dosyalama/drive**, **raporlama** ve **tek platformda çok kanallı mesajlaşma** (WhatsApp/Instagram/Messenger + internal chat) yeteneklerini birleştiren kurumsal bir sistemdir.
 
 Bu doküman yazılımcı olmayan (İK / operasyon / yönetim) okuyucular için hazırlanmıştır: amaç **sistemin hangi parçalarının ne yaptığını**, **müşteri yaşam döngüsünü** ve **organizasyonel işleyişe etkisini** anlaşılır şekilde anlatmaktır.
 
@@ -13,6 +28,7 @@ Bu doküman yazılımcı olmayan (İK / operasyon / yönetim) okuyucular için h
 - [Genel Bakış](#genel-bakış)
 - [Roller ve Kullanım Senaryoları](#roller-ve-kullanım-senaryoları)
 - [Yüksek Seviye Mimari](#yüksek-seviye-mimari)
+- [Teknoloji Yığını (Tech Stack)](#teknoloji-yığını-tech-stack)
 - [Temel Kavramlar ve Veri Yapıları](#temel-kavramlar-ve-veri-yapıları)
 - [Müşteri Yaşam Döngüsü (Uçtan Uca)](#müşteri-yaşam-döngüsü-uçtan-uca)
 - [Kanban / Pipeline](#kanban--pipeline)
@@ -20,8 +36,13 @@ Bu doküman yazılımcı olmayan (İK / operasyon / yönetim) okuyucular için h
 - [CustomerViewer (Tek Ekran Operasyon)](#customerviewer-tek-ekran-operasyon)
 - [Gerçek Zamanlı Güncellemeler (Broadcast / WebSocket)](#gerçek-zamanlı-güncellemeler-broadcast--websocket)
 - [Chat & Unified Inbox](#chat--unified-inbox)
+- [Multi-select & Toplu İşlemler](#multi-select--toplu-işlemler)
 - [Meta / Instagram / WhatsApp Entegrasyonları](#meta--instagram--whatsapp-entegrasyonları)
+- [WhatsApp Template Pazarlama (Broadcast)](#whatsapp-template-pazarlama-broadcast)
 - [Stok / Envanter Yönetimi](#stok--envanter-yönetimi)
+- [Ajanda & Otomatik Hatırlatıcılar](#ajanda--otomatik-hatırlatıcılar)
+- [Drive / Dosyalama Sistemi](#drive--dosyalama-sistemi)
+- [İş Emirleri (Work Orders) ve Workflow](#iş-emirleri-work-orders-ve-workflow)
 - [Yetkilendirme ve Kullanıcı Yönetimi](#yetkilendirme-ve-kullanıcı-yönetimi)
 - [Raporlama ve Analiz](#raporlama-ve-analiz)
 - [Operasyon & Dayanıklılık](#operasyon--dayanıklılık)
@@ -65,6 +86,21 @@ flowchart TB
 	MS["Messenger"] -->|"Webhook / Mesaj"| A
 	META["Meta Lead Formları"] -->|"Webhook"| A
 ```
+
+---
+
+## Teknoloji Yığını (Tech Stack)
+
+Bu bölüm, İK ve yönetim ekipleri için “sistem hangi teknoloji sınıfında?” sorusuna kısa bir cevap verir.
+
+- **Frontend (Web UI)**: Angular tabanlı modern web uygulaması
+- **SSR (Server-Side Rendering)**: İlk ekranın daha hızlı ve stabil gelmesi için sunucu tarafı render yaklaşımı
+- **Backend (Uygulama Servisi / API)**: Node.js + Express ile iş kuralları ve entegrasyon uçları
+- **Veritabanı**: MySQL
+- **ORM / Veri erişimi**: Sequelize
+- **Gerçek zamanlı iletişim**: Socket.IO (WebSocket tabanlı)
+
+Bu teknoloji seti; yüksek kullanıcı sayısı ve yoğun operasyon akışlarında performans/tutarlılık hedefiyle seçilmiştir.
 
 ---
 
@@ -263,14 +299,45 @@ Gerçek zamanlı sistemin prensipleri:
 
 ## Chat & Unified Inbox
 
-Amaç: Farklı kanallardan gelen mesajları tek bir operasyon yaklaşımında yönetmek.
+Amaç: Farklı kanallardan gelen mesajları **tek ekranda** yönetmek ve müşteriyi satış/operasyon sürecine bağlamak.
 
-- **Internal chat**: Kullanıcılar arası takım içi iletişim.
-- **Unified inbox**: WhatsApp/Instagram/Messenger mesajlarının tek yerde görünmesi.
-- Mesajların müşteriyle ilişkilendirilmesi (mümkünse otomatik, gerektiğinde manuel).
-- Okundu/okunmadı, yazıyor, çevrimiçi gibi sinyallerin gerçek zamanlı yansıması.
+Kapsam (tek platform yaklaşımı):
 
-Operasyon faydası: müşteriyle yapılan yazışmalar kaybolmaz; başka biri devraldığında geçmişi görür.
+- **Internal chat (takım içi)**: Kullanıcılar arası sohbet, ekip içi koordinasyon.
+- **Unified Inbox (sosyal kanallar)**: WhatsApp/Instagram/Messenger mesajlarının tek yerde görünmesi.
+- **Müşteri eşleştirme**: Gelen mesajlar mümkünse otomatik olarak ilgili müşteriye bağlanır; gerekirse manuel bağlama yapılabilir.
+- **Dosya/medya**: Mesaj ekleri ve görseller operasyonel geçmişin parçası olarak saklanabilir.
+- **Realtime deneyim**: okundu/okunmadı, yazıyor, online gibi sinyallerin anlık yansıması.
+
+```mermaid
+flowchart LR
+	C["Müşteri"] --- V["CustomerViewer"]
+	V --- I["Unified Inbox"]
+	I --- W["WhatsApp"]
+	I --- G["Instagram"]
+	I --- M["Messenger"]
+	V --- T["Timeline (Operasyon Tarihçesi)"]
+```
+
+Operasyon faydası:
+
+- Müşteriyle yazışmalar kaybolmaz; devralma (handover) kolaylaşır.
+- Aynı müşteri için farklı kanallardan gelen iletişim tek yerde birleşir.
+- Mesajlaşma ile pipeline/aktivite akışı kopmaz.
+
+---
+
+## Multi-select & Toplu İşlemler
+
+Kurumsal CRM’de hız kritik olduğu için, listelerde ve kanban üzerinde “çoklu seçim” ve toplu aksiyonlar desteklenir.
+
+Örnekler:
+
+- **Multi-select filtreler**: Kaynaklar, sorumlular, kampanya/kategori gibi alanlarda çoklu seçimle filtreleme
+- **Toplu kanban işlemleri**: Birden fazla kartı seçip hedef aşamaya taşıma (yetkiye bağlı)
+- **Toplu müşteri işlemleri**: Liste üzerinde seçerek atama/etiketleme gibi yönetimsel aksiyonlar (yetkiye bağlı)
+
+Bu yapı, özellikle yoğun inbound dönemlerinde operasyon hızını artırır.
 
 ---
 
@@ -292,6 +359,19 @@ Entegrasyon katmanı iki ana ihtiyacı karşılar:
 
 ---
 
+## WhatsApp Template Pazarlama (Broadcast)
+
+WhatsApp tarafında “template” (şablon) mesajlar; özellikle pazarlama veya operasyon bilgilendirmesi için kullanılır. Sistem, şablon temelli mesajlaşmayı CRM bağlamına oturtur:
+
+- **Template katalog yönetimi**: Onaylı şablonların seçilmesi ve parametrelerle doldurulması
+- **Toplu gönderim (broadcast)**: Hedef müşteri setine template mesajı gönderebilme
+- **Hedefleme**: Kaynak/etiket/süreç aşaması/sorumlu gibi filtrelerle kitle seçimi
+- **İzlenebilirlik**: Gönderim denemeleri, durumlar ve sonuçların operasyonel takibi
+
+Önemli not (operasyon/gizlilik): Toplu mesajlaşma süreçleri, şirketin KVKK/izin politikalarına ve ilgili kanal kurallarına uygun tasarlanmalıdır.
+
+---
+
 ## Stok / Envanter Yönetimi
 
 Stok/Envanter modülü (ör. proje/ürün/plot gibi varlıklar) satış sürecine bağlanabilir:
@@ -301,6 +381,45 @@ Stok/Envanter modülü (ör. proje/ürün/plot gibi varlıklar) satış sürecin
 - Satış tamamlandığında durum güncelleme
 
 Bu modülün amacı: satış ekibi ve operasyonun aynı “gerçek stok” üzerinden çalışmasını sağlamak ve raporlama doğruluğunu artırmaktır.
+
+---
+
+## Ajanda & Otomatik Hatırlatıcılar
+
+Ajanda ve hatırlatıcı sistemi, satış ve operasyon ekibinin “takip işleri”ni kaçırmamasını hedefler.
+
+- **Ajanda**: Gün/hafta bazlı planlama; randevular ve takip işleri
+- **Hatırlatıcılar**: “Şu tarihte ara”, “randevu teyidi”, “evrak bekleniyor” gibi görevler
+- **Otomatik üretim (kural bazlı)**: Bazı sonuçlarda sistem, takip hatırlatıcısını otomatik oluşturabilir (ör. randevu alındı → teyit hatırlatıcısı)
+- **Geciken takip görünürlüğü**: Süresi geçen işler “overdue” olarak görünür ve raporlanabilir
+
+Bu yaklaşım, bireysel ajandaların dağınıklığını azaltır; takım halinde operasyonu standardize eder.
+
+---
+
+## Drive / Dosyalama Sistemi
+
+CRM içindeki drive/dosyalama yaklaşımı, müşteri ve iş emri süreçlerinde evrak/medya yönetimini tek yere toplar.
+
+- **Merkezi dosyalama**: Müşteriyle ilişkili belgeler tek yerde
+- **Yetki ile uyumlu görünürlük**: Dosyalara erişim, kullanıcı rol/yetkilerine göre sınırlandırılabilir
+- **Operasyon akışına bağlama**: Dosyalar müşteri kaydı veya iş emriyle ilişkilendirilebilir
+- **Pratik kullanım**: Sözleşme, teklif, görseller, formlar, sahadan gelen dokümanlar
+
+Amaç: “dosyalar kimdeydi?” problemini ortadan kaldırmak ve müşteri geçmişini tam tutmaktır.
+
+---
+
+## İş Emirleri (Work Orders) ve Workflow
+
+İş emirleri, satış sonrası veya iç operasyon işlerini (adım adım) yönetmek için kullanılır.
+
+- **İş emri listesi**: açık/kapalı işler
+- **Workflow (adımlar)**: her işin takip edilebilir aşamaları
+- **Sorumlular**: işin kimde olduğu ve hangi adımın kim tarafından tamamlandığı
+- **Takvim/kanban görünümü**: iş yükünü görselleştirme ve planlama
+
+Kazanım: Operasyonlar kişiye bağlı kalmaz; süreç standardı oluşur ve yönetim görünürlüğü artar.
 
 ---
 
