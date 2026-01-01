@@ -1,6 +1,11 @@
 <h1 align="center">Modern CRM</h1>
 
 <div align="center">
+	<b>Kapalı Kaynak (Proprietary)</b><br/>
+	<i>Bu proje Arif Can Erciyas tarafından geliştirilmiştir. Kaynak kod kapalıdır ve yalnızca çok özel durumlarda, iletişim ve uygunluk değerlendirmesi sonrasında paylaşılır.</i>
+</div>
+
+<div align="center">
 	<b>Kurumsal CRM – Tek platformda satış, operasyon, mesajlaşma ve entegrasyonlar</b><br/>
 	<i>Lead → Pipeline (Kanban) → Operasyon (CustomerViewer) → Raporlama</i>
 </div>
