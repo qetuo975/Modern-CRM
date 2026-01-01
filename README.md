@@ -29,6 +29,7 @@ Bu doküman yazılımcı olmayan (İK / operasyon / yönetim) okuyucular için h
 - [Roller ve Kullanım Senaryoları](#roller-ve-kullanım-senaryoları)
 - [Yüksek Seviye Mimari](#yüksek-seviye-mimari)
 - [Teknoloji Yığını (Tech Stack)](#teknoloji-yığını-tech-stack)
+- [Tema (Dark / Light)](#tema-dark--light)
 - [Temel Kavramlar ve Veri Yapıları](#temel-kavramlar-ve-veri-yapıları)
 - [Müşteri Yaşam Döngüsü (Uçtan Uca)](#müşteri-yaşam-döngüsü-uçtan-uca)
 - [Kanban / Pipeline](#kanban--pipeline)
@@ -44,6 +45,7 @@ Bu doküman yazılımcı olmayan (İK / operasyon / yönetim) okuyucular için h
 - [Stok / Envanter Yönetimi](#stok--envanter-yönetimi)
 - [Ajanda & Otomatik Hatırlatıcılar](#ajanda--otomatik-hatırlatıcılar)
 - [Drive / Dosyalama Sistemi](#drive--dosyalama-sistemi)
+- [Proje Yönetimi](#proje-yönetimi)
 - [İş Emirleri (Work Orders) ve Workflow](#iş-emirleri-work-orders-ve-workflow)
 - [Yetkilendirme ve Kullanıcı Yönetimi](#yetkilendirme-ve-kullanıcı-yönetimi)
 - [Raporlama ve Analiz](#raporlama-ve-analiz)
@@ -103,6 +105,16 @@ Bu bölüm, İK ve yönetim ekipleri için “sistem hangi teknoloji sınıfınd
 - **Gerçek zamanlı iletişim**: Socket.IO (WebSocket tabanlı)
 
 Bu teknoloji seti; yüksek kullanıcı sayısı ve yoğun operasyon akışlarında performans/tutarlılık hedefiyle seçilmiştir.
+
+---
+
+## Tema (Dark / Light)
+
+Sistem, kullanıcı deneyimini iyileştirmek için **Dark** ve **Light** tema desteğine sahiptir.
+
+- Uzun süreli kullanımda göz yorgunluğunu azaltmaya yardımcı olur
+- Farklı ekran/ortam koşullarında okunabilirliği artırır
+- Kullanıcı tercihi olarak saklanabilir (kurumsal standartlara uygun şekilde)
 
 ---
 
@@ -530,6 +542,18 @@ Amaç: “dosyalar kimdeydi?” problemini ortadan kaldırmak ve müşteri geçm
 
 ---
 
+## Proje Yönetimi
+
+Proje Yönetimi alanı, satış ve operasyonun çalıştığı “proje” bazlı organizasyonu destekler.
+
+- Proje listesi ve temel proje bilgileri
+- Proje ile ilişkili envanter/stok görünürlüğü (varsa)
+- Müşteri akışını proje bağlamında takip edebilme (kampanya/lead kalitesi/proje talebi gibi)
+
+Amaç: özellikle birden fazla proje/ürün hattı olan organizasyonlarda raporlama ve operasyonu proje bazında yönetilebilir hale getirmektir.
+
+---
+
 ## İş Emirleri (Work Orders) ve Workflow
 
 İş emirleri, satış sonrası veya iç operasyon işlerini (adım adım) yönetmek için kullanılır.
@@ -561,6 +585,7 @@ Sistem güvenliği ve kurumsal düzen için iki katmanlı yaklaşım vardır:
 ### Kullanıcı yönetimi
 
 - Kullanıcı oluşturma/devre dışı bırakma
+- Kullanıcı için **tasfiye et** (offboarding) alanı: işten ayrılma/ilişik kesme durumlarında kullanıcıyı operasyonel olarak pasifleştirme ve erişimi kapatma
 - Rol ve izin atama
 - Organizasyonel departman/ekip ayrımı (varsa)
 
