@@ -29,7 +29,7 @@
     <br/><br/>
     <i>
         ⚠️ <b>Önemli Not:</b> Bu bağlantı, yalnızca arayüz tasarımını ve genel mimariyi incelemeniz için hazırlanmış bir sandbox ortamıdır.<br/>
-        Güvenlik protokolleri gereği <b>prodüksiyon ortam değişkenleri (ENV), veritabanı bağlantıları ve API servisleri</b> bu demoda aktif edilmemiştir.<br/>
+        Güvenlik protokolleri gereği <b>prodüksiyon ortam değişkenleri (ENV), veritabanı bağlantıları ve API servisleri</b> bu demoda kısıtlı aktif edilmiştir<br/>
         Bu nedenle formlar ve dinamik veri akışları işlevsiz olabilir. 
     </i>
 	<br>
