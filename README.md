@@ -36,6 +36,7 @@ Bu doküman yazılımcı olmayan (İK / operasyon / yönetim) okuyucular için h
 - [CustomerViewer (Tek Ekran Operasyon)](#customerviewer-tek-ekran-operasyon)
 - [Gerçek Zamanlı Güncellemeler (Broadcast / WebSocket)](#gerçek-zamanlı-güncellemeler-broadcast--websocket)
 - [Chat & Unified Inbox](#chat--unified-inbox)
+- [Santral / Telekomünikasyon (Sabit Hat Arama)](#santral--telekomünikasyon-sabit-hat-arama)
 - [Multi-select & Toplu İşlemler](#multi-select--toplu-işlemler)
 - [Meta / Instagram / WhatsApp Entegrasyonları](#meta--instagram--whatsapp-entegrasyonları)
 - [WhatsApp Template Pazarlama (Broadcast)](#whatsapp-template-pazarlama-broadcast)
@@ -324,6 +325,42 @@ Operasyon faydası:
 - Müşteriyle yazışmalar kaybolmaz; devralma (handover) kolaylaşır.
 - Aynı müşteri için farklı kanallardan gelen iletişim tek yerde birleşir.
 - Mesajlaşma ile pipeline/aktivite akışı kopmaz.
+
+---
+
+## Santral / Telekomünikasyon (Sabit Hat Arama)
+
+CRM içinde entegre bir **santral/telekomünikasyon** akışı bulunur. Bu sayede ekip, müşteri aramalarını uygulama içinden yönetebilir ve **sabit hat üzerinden çıkış** yapabilir.
+
+Bu entegrasyonun amacı:
+
+- Satış/çağrı ekiplerinin farklı uygulamalar arasında geçiş yapmadan arama yapabilmesi
+- Görüşmelerin müşteri kaydıyla ilişkilendirilmesi (tarihçe/takip kalitesi)
+- Operasyon yönetiminin “arama aktivitesi”ni görünür kılması
+
+Örnek kullanım akışı:
+
+- Müşteri kartından **tek tıkla ara**
+- Arama başladığında müşteri ekranı (CustomerViewer) üzerinden not/sonuç girişi
+- Arama sonucu, ilgili **aktivite/timeline** üzerine kayıt olarak düşer
+
+```mermaid
+sequenceDiagram
+	autonumber
+	participant U as Satış/Çağrı Kullanıcısı
+	participant CRM as CRM
+	participant PBX as Santral / Telekom Sistemi
+	participant C as Müşteri
+
+	U->>CRM: Müşteri kaydından arama başlat
+	CRM->>PBX: Arama isteği (sabit hat çıkış)
+	PBX->>C: Telefon çağrısı
+	C-->>PBX: Yanıt/Meşgul/Cevapsız
+	PBX-->>CRM: Arama durumu
+	CRM-->>U: Timeline + takip sonucu girişi
+```
+
+> Not (uyumluluk): Arama kayıtları ve görüşme içerikleri; KVKK/izin/kurum politikalarına göre ele alınmalıdır (gerekirse maskeleme, saklama süresi, erişim yetkisi).
 
 ---
 
