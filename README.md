@@ -1,4 +1,4 @@
-## Modern CRM 🚀
+<h1 align="center">Modern CRM</h1>
 
 <div align="center">
 	<b>Kurumsal CRM – Tek platformda satış, operasyon, mesajlaşma ve entegrasyonlar</b><br/>
@@ -357,6 +357,50 @@ Entegrasyon katmanı iki ana ihtiyacı karşılar:
 
 > Reklam optimizasyonu için (kurgu olarak) bazı standart olayların üçüncü taraf sistemlere iletilmesi mümkün olacak şekilde tasarlanır. Bu aktarım, tekrar denemelerde aynı olayın iki kez sayılmaması için idempotent/dedup prensibiyle ele alınır.
 
+### Meta ile tam entegrasyon (Webhook + Reklam bağlamı)
+
+Meta entegrasyonu yalnızca “lead gelsin” düzeyinde değildir; lead’in geldiği reklam bağlamını operasyon ve raporlamaya taşımayı hedefler.
+
+- **Webhook ile lead toplama**: Meta Lead Form’larından gelen başvurular sisteme düşer, müşteriyle eşleştirilir ve pipeline’a alınır.
+- **Reklam bağlamı (attribution)**: UTM/kampanya bilgileri müşteri kaydına bağlanır; böylece müşteri yolculuğu “hangi kampanyadan geldi?” sorusuyla birlikte izlenir.
+- **Operasyon tetikleri**: Lead geldiğinde ilgili ekip/sorumlular bilgilendirilebilir ve ilk takip aksiyonları (aktivite/hatırlatıcı) başlatılabilir.
+
+```mermaid
+flowchart LR
+	MF["Meta Lead Form"] -->|"Webhook"| CRM["CRM"]
+	CRM --> CUS["Müşteri (Customer)"]
+	CRM --> PIPE["Pipeline (Kanban)"]
+	CRM --> TL["Timeline (Operasyon Tarihçesi)"]
+	CRM --> RPT["Raporlar (Attribution)"]
+```
+
+### Reklam raporları (Kampanya / Reklam Seti / Reklam)
+
+Kampanya analitiği ve reklam raporları; pazarlama tarafının “harcama → lead → randevu → satış” zincirini takip edebilmesini hedefler.
+
+- **Kampanya raporları**: Kampanya bazında performans (lead sayısı, dönüşüm, maliyet vb.).
+- **Reklam seti raporları**: Hedefleme kırılımlarını görmeye yardımcı olur.
+- **Reklam raporları**: Hangi kreatif/ilan daha iyi sonuç veriyor sorusuna destek olur.
+
+> Not: Rapor metrikleri işletmenin karar ihtiyacına göre özetlenebilir; ana amaç, operasyon verisi (CRM) ile reklam verisini aynı hikayede buluşturmaktır.
+
+### UTM bazlı müşteri raporları
+
+UTM yaklaşımı, sadece pazarlama raporu değil; operasyonel verimlilik için de kullanılır:
+
+- UTM bazında müşteri listeleri (ör. belirli kampanyadan gelenler)
+- UTM bazında süreç performansı (hangi kampanya daha çok randevu/satış üretiyor?)
+- UTM bazında takip kalitesi (geciken takip, no-show oranı gibi operasyon metrikleri)
+
+### Duygusal ve mantıksal analiz (özet)
+
+Sistem, müşteri değerlendirmesi ve önceliklendirme için “skor/kalite” yaklaşımını destekler. İşletme ihtiyacına göre iki boyutlu bir değerlendirme yapılabilir:
+
+- **Duygusal (niyet/ilgi) analizi**: müşterinin ilgi düzeyi ve yakınlık sinyalleri
+- **Mantıksal (uygunluk) analizi**: bütçe/uygunluk/gerçekleşebilirlik gibi kriterler
+
+Bu skorlar; satış ekibinin önceliklendirmesine ve kampanya performansının daha doğru yorumlanmasına yardımcı olur.
+
 ---
 
 ## WhatsApp Template Pazarlama (Broadcast)
@@ -453,6 +497,7 @@ Raporlama, operasyonu “görünür” kılar:
 - Kaynak performansı: hangi kanal/kampanya daha verimli?
 - Süreç verimliliği: aşamalar arası dönüşüm oranları
 - Operasyon yükü: randevu yoğunluğu, hatırlatıcı backlog, takım performansı
+- Kalite skorları: duygusal/mantıksal değerlendirmeye göre önceliklendirme ve performans okuma
 
 ```mermaid
 pie title Örnek: Lead Kaynak Dağılımı (temsili)
